@@ -765,6 +765,7 @@
   firebase.initializeApp(firebaseConfig);
   var fbAuth = firebase.auth();
   var firestore = firebase.firestore();
+  fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){});
 </script>
 <script>
 (function(){
@@ -1911,13 +1912,12 @@
 
   document.getElementById('googleLoginBtn').addEventListener('click', function(){
     var provider = new firebase.auth.GoogleAuthProvider();
-    fbAuth.signInWithPopup(provider).catch(function(err){
-      if(err && err.code === 'auth/popup-blocked'){
-        fbAuth.signInWithRedirect(provider);
-        return;
-      }
-      alert('로그인에 실패했어요: ' + (err && err.message ? err.message : err));
-    });
+    fbAuth.signInWithRedirect(provider);
+  });
+  fbAuth.getRedirectResult().catch(function(err){
+    if(err && err.code && err.code !== 'auth/no-auth-event'){
+      alert('로그인에 실패했어요: ' + (err.message || err.code));
+    }
   });
   document.getElementById('logoutBtn').addEventListener('click', function(){
     fbAuth.signOut();
