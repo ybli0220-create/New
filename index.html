@@ -390,13 +390,14 @@
   .login-card h1{font-size:24px; margin-bottom:10px;}
   .login-card .desc{font-size:13.5px; color:var(--ink-2); margin-bottom:24px; line-height:1.6;}
   .login-card .btn-primary{
-    display:flex; align-items:center; justify-content:center; padding:14px; font-size:14.5px;
+    display:flex; align-items:center; justify-content:center; padding:14px; font-size:14.5px; margin-top:6px;
   }
+  #authModeToggle{margin-bottom:18px;}
+  #authModeToggle button.active{background:var(--accent-tint); color:var(--accent);}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -404,8 +405,20 @@
   <div class="login-card">
     <h1>저축 가계부</h1>
     <p class="desc">원화·파운드·달러를 함께 기록하고, 저축이 줄어드는 흐름과 지출 목표를 한눈에 확인하는 가계부예요.</p>
-    <div id="googleLoginBtn" style="display:flex; justify-content:center; min-height:44px;"></div>
-    <p class="card-note" id="gsiFallbackNote" hidden style="color:var(--warn); text-align:center; margin-top:10px;">구글 로그인 버튼을 불러오지 못했어요. 광고 차단 확장 프로그램을 꺼보시거나 새로고침 해주세요.</p>
+    <div class="type-toggle" id="authModeToggle">
+      <button type="button" data-mode="login" class="active">로그인</button>
+      <button type="button" data-mode="signup">회원가입</button>
+    </div>
+    <div class="field" style="text-align:left;">
+      <label for="authEmail">이메일</label>
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email">
+    </div>
+    <div class="field" style="text-align:left;">
+      <label for="authPassword">비밀번호</label>
+      <input type="password" id="authPassword" placeholder="6자 이상" autocomplete="current-password">
+    </div>
+    <button id="authSubmitBtn" class="btn-primary" style="width:100%;">로그인</button>
+    <p class="card-note" id="authError" style="color:var(--critical); text-align:center; margin-top:10px;" hidden></p>
     <p class="card-note" style="margin-top:14px; text-align:center;">로그인한 계정에만 보이는 개인 기록이에요. 다른 사람은 볼 수 없어요.</p>
   </div>
 </div>
@@ -534,7 +547,7 @@
   </div>
 </div>
 
-<footer>기록은 로그인한 구글 계정에 안전하게 저장돼요, 다른 사람은 볼 수 없어요. 환율은 자동으로 갱신되지 않으니 주기적으로 직접 업데이트해주세요.</footer>
+<footer>기록은 로그인한 계정에 안전하게 저장돼요, 다른 사람은 볼 수 없어요. 환율은 자동으로 갱신되지 않으니 주기적으로 직접 업데이트해주세요.</footer>
 
 <!-- onboarding -->
 <div class="backdrop center" id="onboardBackdrop">
@@ -1909,32 +1922,43 @@
       .then(function(){ budgetBackdrop.classList.remove('show'); });
   });
 
-  // ---- Google Identity Services: replace YOUR_GOOGLE_OAUTH_CLIENT_ID below ----
-  // Firebase Console → Authentication → Sign-in method → Google → "웹 SDK 구성" → 웹 클라이언트 ID
-  var GOOGLE_OAUTH_CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
-
-  function handleGoogleCredential(response){
-    var cred = firebase.auth.GoogleAuthProvider.credential(response.credential);
-    fbAuth.signInWithCredential(cred).catch(function(err){
-      alert('로그인에 실패했어요: ' + (err.message || err.code));
-    });
-  }
-
-  window.onGoogleLibraryLoad = function(){
-    google.accounts.id.initialize({
-      client_id: GOOGLE_OAUTH_CLIENT_ID,
-      callback: handleGoogleCredential,
-      auto_select: false
-    });
-    google.accounts.id.renderButton(document.getElementById('googleLoginBtn'), {
-      theme: 'filled_blue', size: 'large', shape: 'pill', text: 'continue_with', width: 300
-    });
+  var AUTH_ERROR_MESSAGES = {
+    'auth/email-already-in-use': '이미 가입된 이메일이에요. 로그인을 눌러주세요.',
+    'auth/invalid-email': '이메일 형식이 올바르지 않아요.',
+    'auth/weak-password': '비밀번호는 6자 이상이어야 해요.',
+    'auth/user-not-found': '가입되지 않은 이메일이에요. 회원가입을 눌러주세요.',
+    'auth/wrong-password': '비밀번호가 올바르지 않아요.',
+    'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않아요.',
+    'auth/too-many-requests': '너무 많이 시도했어요. 잠시 후 다시 시도해주세요.',
+    'auth/missing-password': '비밀번호를 입력해주세요.'
   };
-  setTimeout(function(){
-    if(!window.google || !window.google.accounts){
-      document.getElementById('gsiFallbackNote').hidden = false;
-    }
-  }, 4000);
+
+  var authMode = 'login';
+  document.querySelectorAll('#authModeToggle button').forEach(function(b){
+    b.addEventListener('click', function(){
+      authMode = b.getAttribute('data-mode');
+      document.querySelectorAll('#authModeToggle button').forEach(function(bb){ bb.classList.toggle('active', bb===b); });
+      document.getElementById('authSubmitBtn').textContent = authMode==='signup' ? '회원가입' : '로그인';
+      document.getElementById('authError').hidden = true;
+    });
+  });
+  document.getElementById('authSubmitBtn').addEventListener('click', function(){
+    var email = document.getElementById('authEmail').value.trim();
+    var pw = document.getElementById('authPassword').value;
+    var errEl = document.getElementById('authError');
+    errEl.hidden = true;
+    if(!email || !pw){ errEl.textContent = '이메일과 비밀번호를 입력해주세요.'; errEl.hidden = false; return; }
+    var action = authMode === 'signup'
+      ? fbAuth.createUserWithEmailAndPassword(email, pw)
+      : fbAuth.signInWithEmailAndPassword(email, pw);
+    action.catch(function(err){
+      errEl.textContent = AUTH_ERROR_MESSAGES[err.code] || ('로그인에 실패했어요 (' + err.code + ')');
+      errEl.hidden = false;
+    });
+  });
+  document.getElementById('authPassword').addEventListener('keydown', function(e){
+    if(e.key === 'Enter') document.getElementById('authSubmitBtn').click();
+  });
   document.getElementById('logoutBtn').addEventListener('click', function(){
     fbAuth.signOut();
   });
